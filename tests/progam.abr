@@ -1,6 +1,6 @@
 using io
 
-func main(argc, argv) -> int:
+func main() -> int:
     let filePtr: file = io::openFile("testing2.txt", "r")
     //io::writeFile(filePtr, "This is a test!!!!")
 

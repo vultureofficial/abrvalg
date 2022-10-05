@@ -208,11 +208,14 @@ def eval_function_declaration(node, env):
     env.set(node.name, node)
 
     func = node.ret[1] 
+    params = node.params
+    if node.name == "main":
+        params = node.params + [ast.TypedParam("argc", "i32"), ast.TypedParam("argv", "i8**")]
     func = func + " " + node.name + "(" 
     call_env = Environment(env, None)
 
-    for i in range(0, len(node.params)):
-        param = node.params[i]
+    for i in range(0, len(params)):
+        param = params[i]
         if type(param) == ast.TypedParam:
             func = func + param.data_type + " " + param.name  
             call_env.set(param.name, 0)
@@ -221,7 +224,7 @@ def eval_function_declaration(node, env):
             func = func + "auto " + param 
 
 
-        if i != len(node.params) -1:
+        if i != len(params) -1:
             func = func + ", "
 
     func = func + ") {"
