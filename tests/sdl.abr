@@ -1,0 +1,7 @@
+using sdl 
+
+func main() -> i32:
+    sdl::init()
+
+    sdl::quit()
+    return 0

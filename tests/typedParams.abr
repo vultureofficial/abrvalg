@@ -1,0 +1,10 @@
+using io 
+
+func add(x: i32, y: i32) -> i32:
+    return x + y 
+
+func main() -> i32:
+    let sum: i32 = add(100,100)
+    io::println(sum)
+
+    return 0

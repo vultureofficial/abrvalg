@@ -1,0 +1,28 @@
+using io
+
+class Object:
+    func create() -> void:
+        return 
+    
+    func greet() -> void:
+        println("Greeting by object!!!!")
+    
+
+class Human -> Object:
+    let name: string
+    let age: i32
+
+    func create(name: string) -> Human:
+        let tmp: Human
+        tmp::name = name 
+        return tmp
+
+    func greet() -> void:
+        println("Hello, " + name)
+
+
+func main() -> i32:
+    let me: Human = Human::create("Vincent")
+    me::greet()
+
+    return 0

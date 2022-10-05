@@ -5,6 +5,7 @@ Parser
 Top-down recursive descent parser.
 """
 
+from ast import Sub
 from abrvalg import ast
 from abrvalg.errors import AbrvalgSyntaxError
 
@@ -31,7 +32,7 @@ class Subparser(object):
     PRECEDENCE = {
         'call': 10,
         'subscript': 10,
-
+        'scope': 10,
         'unary': 9,
 
         '*': 7,
@@ -127,7 +128,7 @@ class GroupExpression(PrefixSubparser):
         tokens.consume_expected('LPAREN')
         right = Expression().parse(parser, tokens)
         tokens.consume_expected('RPAREN')
-        return right
+        return ast.GroupExpression(right)
 
 
 # array_expr: LBRACK list_of_expr? RBRACK
@@ -182,6 +183,20 @@ class BinaryOperatorExpression(InfixSubparser):
         return self.PRECEDENCE[token.value]
 
 
+class ClassResolution(InfixSubparser):
+    def parse(self, parser, tokens, left):
+        tokens.consume_expected('SCOPE')
+
+        current = tokens.current()
+        ret = Expression().parse(parser, tokens)
+
+        return ast.ClassAccess(left, ret)
+
+
+    def get_precedence(self, token):
+        return self.PRECEDENCE['scope']
+
+
 # call_expr: NAME LPAREN list_of_expr? RPAREN
 class CallExpression(InfixSubparser):
 
@@ -189,7 +204,11 @@ class CallExpression(InfixSubparser):
         tokens.consume_expected('LPAREN')
         arguments = ListOfExpressions().parse(parser, tokens)
         tokens.consume_expected('RPAREN')
-        return ast.Call(left, arguments)
+        current = tokens.current()[0] 
+        tag = None
+        if current != 'NEWLINE':
+            tag = 1
+        return ast.Call(left, arguments, tag)
 
     def get_precedence(self, token):
         return self.PRECEDENCE['call']
@@ -229,7 +248,8 @@ class Expression(Subparser):
         return self.get_subparser(token, {
             'OPERATOR': BinaryOperatorExpression,
             'LPAREN': CallExpression,
-            'LBRACK': SubscriptOperatorExpression,
+            'LBRACK': SubscriptOperatorExpression, 
+            'SCOPE' : ClassResolution,
         })
 
     def get_next_precedence(self, tokens):
@@ -289,11 +309,21 @@ class FunctionStatement(Subparser):
         if tokens.current().name == 'NAME':
             while not tokens.is_end():
                 id_token = tokens.consume_expected('NAME')
-                params.append(id_token.value)
                 if tokens.current().name == 'COMMA':
+                    params.append(id_token.value)
                     tokens.consume_expected('COMMA')
+                elif tokens.current().name == 'COLON':
+                    tokens.consume_expected('COLON')
+                    type_name = tokens.consume_expected('NAME')
+                    params.append(ast.TypedParam(id_token.value, type_name.value))
+                    if tokens.current().name == "COMMA":
+                        tokens.consume_expected('COMMA')
+                    else:
+                        break
                 else:
+                    params.append(id_token.value)
                     break
+
         return params
 
     def parse(self, parser, tokens):
@@ -301,12 +331,75 @@ class FunctionStatement(Subparser):
         id_token = tokens.consume_expected('NAME')
         tokens.consume_expected('LPAREN')
         arguments = self._parse_params(tokens)
-        tokens.consume_expected('RPAREN', 'COLON')
+        tokens.consume_expected('RPAREN')
+        tokens.consume_expected('ARROW')
+        data_type = tokens.consume_expected('NAME')
+        tokens.consume_expected('COLON')
         with enter_scope(parser, 'function'):
             block = Block().parse(parser, tokens)
         if block is None:
             raise ParserError('Expected function body', tokens.current())
-        return ast.Function(id_token.value, arguments, block)
+        return ast.Function(id_token.value, arguments, block, data_type)
+
+class ClassDataStament(Subparser):
+    def parse(self, parser, tokens):
+        tokens.consume_expected('CLASS')
+        className = tokens.consume_expected('NAME')
+        current = tokens.current()
+        parents = []
+        
+        if current[0] == 'ARROW':
+            
+            tokens.consume_expected('ARROW')
+
+            current = tokens.current()
+
+            while current[0] == 'NAME':
+                parents.append(current[1])
+                tokens.consume_expected('NAME')
+                isComma = tokens.current()
+
+                if isComma[0] == 'COMMA':
+                    tokens.consume_expected('COMMA')
+                    current = tokens.current()
+                elif isComma[0] == 'COLON':
+                    tokens.consume_expected('COLON')
+                    current = tokens.current()
+                else:
+                    current = tokens.current()
+                
+        
+        elif current[0] == 'COLON':
+            tokens.consume_expected('COLON')
+
+        body = Block().parse(parser, tokens)
+        return ast.ClassDefinition(className, parents, body)
+
+
+class UsingMod(Subparser):
+
+    def parse(self, parser, tokens):
+        tokens.consume_expected('USING')
+        mod = tokens.consume_expected('NAME')[1]
+        tokens.consume_expected('NEWLINE')
+        return ast.UsingNode(mod)
+ 
+class TypedVarDeclStatement(Subparser):
+
+    def parse(self, parser, tokens):
+        tokens.consume_expected('LET')
+        var_name = tokens.consume_expected('NAME')
+        tokens.consume_expected('COLON')
+        var_type = tokens.consume_expected('NAME')
+        if tokens.current()[0] == 'NEWLINE':
+            tokens.consume_expected('NEWLINE')
+            return ast.TypedName(var_name, var_type, None)
+
+        tokens.consume_expected('ASSIGN')
+        val = Expression().parse(parser, tokens)
+        tokens.consume_expected('NEWLINE')
+        return ast.TypedName(var_name, var_type, val)
+
 
 
 # cond_stmnt: IF expr COLON block (ELIF COLON block)* (ELSE COLON block)?
@@ -482,6 +575,9 @@ class Statements(Subparser):
             'RETURN': ReturnStatement,
             'BREAK': BreakStatement,
             'CONTINUE': ContinueStatement,
+            'LET': TypedVarDeclStatement, 
+            'USING': UsingMod, 
+            'CLASS': ClassDataStament, 
         }, ExpressionStatement)
 
     def parse(self, parser, tokens):

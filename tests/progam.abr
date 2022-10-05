@@ -1,0 +1,12 @@
+using io
+
+func main(argc, argv) -> int:
+    let filePtr: file = io::openFile("testing2.txt", "r")
+    //io::writeFile(filePtr, "This is a test!!!!")
+
+    let contents: string = io::readFile(filePtr)
+
+    io::println(contents)
+
+    io::closeFile(filePtr)
+    return 0

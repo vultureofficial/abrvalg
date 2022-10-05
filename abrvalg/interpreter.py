@@ -5,17 +5,25 @@ Interpreter
 AST-walking interpreter.
 """
 from __future__ import print_function
+from cgitb import reset
 import operator
 from collections import namedtuple
+from pydoc import classname
+import re
+from textwrap import indent
 from abrvalg import ast
 from abrvalg.lexer import Lexer, TokenStream
 from abrvalg.parser import Parser
 from abrvalg.errors import AbrvalgSyntaxError, report_syntax_error
 from abrvalg.utils import print_ast, print_tokens, print_env
+from abrvalg.ops import add, sub, div, mul, mod,gt,ge,lt,le,eq,ne
 
+
+
+buffer = "#include <data_types.h>\n#include <vector>\n#include <range.h>\n\n"
 
 BuiltinFunction = namedtuple('BuiltinFunction', ['params', 'body'])
-
+object_list = []
 
 class Break(Exception):
     pass
@@ -59,25 +67,31 @@ class Environment(object):
         return 'Environment({})'.format(str(self._values))
 
 
+def eval_type(eval, tps):
+    
+    for tp in tps:
+        if type(eval) == tp:
+            return tp(eval)
+    
 def eval_binary_operator(node, env):
     simple_operations = {
-        '+': operator.add,
-        '-': operator.sub,
-        '*': operator.mul,
-        '/': operator.truediv,
-        '%': operator.mod,
-        '>': operator.gt,
-        '>=': operator.ge,
-        '<': operator.lt,
-        '<=': operator.le,
-        '==': operator.eq,
-        '!=': operator.ne,
-        '..': range,
+        '+': add,
+        '-': sub,
+        '*': mul,
+        '/': div,
+        '%': mod,
+        '>': gt,
+        '>=': ge,
+        '<': lt,
+        '<=': le,
+        '==': eq,
+        '!=': ne,
+        '..': lambda start, end: ast.BinaryOperator('..', start, end),
         '...': lambda start, end: range(start, end + 1),
     }
     lazy_operations = {
-        '&&': lambda lnode, lenv: bool(eval_expression(lnode.left, lenv)) and bool(eval_expression(lnode.right, lenv)),
-        '||': lambda lnode, lenv: bool(eval_expression(lnode.left, lenv)) or bool(eval_expression(lnode.right, lenv)),
+        '&&': lambda lnode, lenv: eval_expression(lnode.left, lenv) + " && "+  eval_expression(lnode.right, lenv),
+        '||': lambda lnode, lenv: eval_expression(lnode.left, lenv) + " || "+  eval_expression(lnode.right, lenv)
     }
     if node.operator in simple_operations:
         return simple_operations[node.operator](eval_expression(node.left, env), eval_expression(node.right, env))
@@ -98,97 +112,255 @@ def eval_unary_operator(node, env):
 def eval_assignment(node, env):
     if isinstance(node.left, ast.SubscriptOperator):
         return eval_setitem(node, env)
+    
+    elif isinstance(node.left, ast.ClassAccess):
+        name = node.left.left.value 
+        access_name = node.left.right.value
+
+        ret = eval_expression(node.right, env)
+        if env.get(access_name) != None:
+            return name + "." + access_name + " = " + ret + ";"
+        env.set(access_name, ret)
+        return "auto " + name + " = " + access_name + "()." + ret   
+    
     else:
-        return env.set(node.left.value, eval_expression(node.right, env))
+        
+        val = str(eval_expression(node.right, env))
+        if env.get(node.left.value) != None:
+            return node.left.value + " = " + val + ";"
+        env.set(node.left.value, val)
+        return "auto " + node.left.value + " = " + val + ";"
 
 
 def eval_condition(node, env):
-    if eval_expression(node.test, env):
-        return eval_statements(node.if_body, env)
+    cond  = eval_expression(node.test, env)
+
+    ret_str = " if (" + cond + ") {"
+    _if_body = eval_statements(node.if_body, env) 
+    ret_str = ret_str + _if_body + "\n}"
 
     for cond in node.elifs:
-        if eval_expression(cond.test, env):
-            return eval_statements(cond.body, env)
+        cnd = eval_expression(cond.test, env)
+        ret_str = ret_str + " else if (" + cnd + ") {"
+        else_if_body = eval_statements(cond.body, env)
+        ret_str = ret_str + else_if_body + "\n}"
 
     if node.else_body is not None:
-        return eval_statements(node.else_body, env)
+        ret_str = ret_str + " else {"
+        val = eval_statements(node.else_body, env)
+        ret_str = ret_str + val + "\n}"
+
+    return ret_str
 
 
 def eval_match(node, env):
     test = eval_expression(node.test, env)
+    ret_str = "switch (" + test + ") {\n"
     for pattern in node.patterns:
-        if eval_expression(pattern.pattern, env) == test:
-            return eval_statements(pattern.body, env)
+        #if eval_expression(pattern.pattern, env) == test:
+        #    return eval_statements(pattern.body, env)
+        body = eval_statements(pattern.body, env)
+        match = eval_expression(pattern.pattern, env)
+        ret_str = ret_str + "case " + match + ":\n{" + body + "\nbreak;\n}\n"
     if node.else_body is not None:
-        return eval_statements(node.else_body, env)
+        default = eval_statements(node.else_body, env)
+        ret_str = ret_str + " default:\n{" + default + "\n}\n"
+    ret_str = ret_str + "}\n"
+
+    return ret_str
 
 
 def eval_while_loop(node, env):
-    while eval_expression(node.test, env):
-        try:
-            eval_statements(node.body, env)
-        except Break:
-            break
-        except Continue:
-            pass
+    cond = eval_expression(node.test, env)
+    body = eval_statements(node.body, env)
+
+    ret_str = 'while (' + cond + ') {'
+    ret_str = ret_str + body + '\n}\n'
+    return ret_str
 
 
 def eval_for_loop(node, env):
     var_name = node.var_name
+    env.set(var_name,0)
     collection = eval_expression(node.collection, env)
-    for val in collection:
-        env.set(var_name, val)
-        try:
-            eval_statements(node.body, env)
-        except Break:
-            break
-        except Continue:
-            pass
+
+    ret_str = 'for '
+
+    if type(collection) == ast.BinaryOperator:
+        if collection.operator == '..':
+            left= collection.left, 
+            right = collection.right
+            left = str(left[0])
+            right = str(right)
+
+            ret_str = ret_str + '( auto ' + var_name + ': range::range(' + left + "," + right + ')) {' #+ " + 1"
+            #ret_str = ret_str + '; ' + var_name 
+            body = eval_statements(node.body, env) 
+            ret_str = ret_str + body + "\n}"
+        else:
+            print("Syntax error: Invalid loop operator "+ collection.operator)
+            exit()
+
+    return ret_str
 
 
 def eval_function_declaration(node, env):
-    return env.set(node.name, node)
+    env.set(node.name, node)
 
+    func = node.ret[1] 
+    func = func + " " + node.name + "(" 
+    call_env = Environment(env, None)
+
+    for i in range(0, len(node.params)):
+        param = node.params[i]
+        if type(param) == ast.TypedParam:
+            func = func + param.data_type + " " + param.name  
+            call_env.set(param.name, 0)
+        else:
+            call_env.set(param, 0)
+            func = func + "auto " + param 
+
+
+        if i != len(node.params) -1:
+            func = func + ", "
+
+    func = func + ") {"
+    res = None
+    try:
+        res = eval_statements(node.body, call_env)
+        func = func + str(res) + "\n}\n" 
+    except Return as ret:
+        return ret.value
+    
+    return func
+
+def eval_group(node, env):
+    ret = "(" + eval_expression(node.left, env) + ")"
+    return ret
+
+
+def eval_classaccess(node, env):
+    ret_str = ""
+    class_name= node.left.value
+    res = ""
+    if type(node.right) == ast.Call:
+        res = eval_call(node.right, env)
+    elif type(node.right) == ast.Identifier :
+        res = eval_expression(node.right, env)
+    elif type(node.right) == ast.BinaryOperator:
+        res = eval_expression(node.right, env)
+        #TODO: fix codegen for obj::
+        
+    if env.get(class_name) != None:
+        ret_str = ret_str + class_name +'.'
+    else:
+        ret_str = ret_str + class_name +'().'
+
+    ret_str = ret_str + res
+
+    return ret_str
+def eval_classdef(node, env):
+    ret_str = 'class ' + node.name[1]
+    object_list.append(node.name[0])
+    for i in range(0,len(node.parents)):
+        parent = node.parents[i] 
+        if i == 0:
+            ret_str = ret_str + ": public " + parent 
+        elif i < len(node.parents) - 1:
+            ret_str = ret_str + ", public " + parent
+        else:
+            ret_str = ret_str + parent 
+
+    ret_str = ret_str + "{\npublic:\n"
+    ret_str = ret_str + node.name[1] + "() {}\n"
+    ret_str = ret_str + "~" +node.name[1] + "() {}"
+
+    body = eval_statements(node.body, env) 
+    ret_str = ret_str + body + "\n};\n"
+
+    return ret_str
+
+def eval_include(node, env):
+    module = node.module
+    #env.set(module, 0)
+    return "#include <" + module + ".h>" 
+
+
+def eval_typed_var(node, env):
+    ret_str = node.type[1] + " " + node.name[1] 
+    env.set(node.name[1], 0)
+    val = ""
+    if node.value != None:
+        val = " = " + str(eval_expression(node.value, env))
+    ret_str = ret_str + val + ";"
+    return ret_str
 
 def eval_call(node, env):
-    function = eval_expression(node.left, env)
-    n_expected_args = len(function.params)
+    function = env.get(node.left)
+    ret_str = node.left.value + " ("
     n_actual_args = len(node.arguments)
-    if n_expected_args != n_actual_args:
-        raise TypeError('Expected {} arguments, got {}'.format(n_expected_args, n_actual_args))
-    args = dict(zip(function.params, [eval_expression(node, env) for node in node.arguments]))
-    if isinstance(function, BuiltinFunction):
-        return function.body(args, env)
-    else:
-        call_env = Environment(env, args)
-        try:
-            return eval_statements(function.body, call_env)
-        except Return as ret:
-            return ret.value
 
+    for i in range(0, n_actual_args):
+        param = node.arguments[i]
+
+        val = ""
+        
+        if type(param) == ast.BinaryOperator:
+            val = str(eval_expression(param, env))
+        elif type(param) == ast.ClassAccess:
+            val = "(" + str(eval_classaccess(param, env)) + ")"
+        elif type(param) == ast.String:
+            val = '"' + param.value + '"'
+        elif type(param) == ast.Call:
+            val = str(eval_expression(param, env))
+        elif type(param) == ast.SubscriptOperator:
+            val = str(eval_expression(param, env))
+        else:
+            val = str(param.value)
+
+        if i != n_actual_args -1:
+            ret_str = ret_str + val + " , "
+        else:
+            ret_str = ret_str + val 
+        
+    if node.tagged ==None:
+        return ret_str + ");"
+    else:
+        return ret_str + ") "
 
 def eval_identifier(node, env):
     name = node.value
     val = env.get(name)
     if val is None:
         raise NameError('Name "{}" is not defined'.format(name))
-    return val
+    return name
 
 
 def eval_getitem(node, env):
     collection = eval_expression(node.left, env)
     key = eval_expression(node.key, env)
-    return collection[key]
+    return collection + '[' + key + ']'
 
 
 def eval_setitem(node, env):
     collection = eval_expression(node.left.left, env)
     key = eval_expression(node.left.key, env)
-    collection[key] = eval_expression(node.right, env)
+    val = eval_expression(node.right, env)
+
+    return collection + '.at(' + key + ') = ' + val + ';'
 
 
 def eval_array(node, env):
-    return [eval_expression(item, env) for item in node.items]
+    ret_str = "std::vector {"
+    for i  in range(0, len(node.items)):
+        item = node.items[i]
+        val = eval_expression(item, env) 
+        if i < len(node.items) -1:
+            ret_str = ret_str + val + ","
+        else:
+            ret_str = ret_str + val 
+
+    return ret_str + '};'
 
 
 def eval_dict(node, env):
@@ -196,12 +368,12 @@ def eval_dict(node, env):
 
 
 def eval_return(node, env):
-    return eval_expression(node.value, env) if node.value is not None else None
+    return "return " + str(eval_expression(node.value, env)) + ";" if node.value is not None else "return ;"
 
 
 evaluators = {
-    ast.Number: lambda node, env: node.value,
-    ast.String: lambda node, env: node.value,
+    ast.Number: lambda node, env: str(node.value),
+    ast.String: lambda node, env: '"' + str(node.value) + '"',
     ast.Array: eval_array,
     ast.Dictionary: eval_dict,
     ast.Identifier: eval_identifier,
@@ -216,6 +388,11 @@ evaluators = {
     ast.Function: eval_function_declaration,
     ast.Call: eval_call,
     ast.Return: eval_return,
+    ast.TypedName: eval_typed_var, 
+    ast.UsingNode: eval_include, 
+    ast.ClassDefinition: eval_classdef,
+    ast.ClassAccess: eval_classaccess, 
+    ast.GroupExpression: eval_group
 }
 
 
@@ -237,27 +414,31 @@ def eval_statement(node, env):
 
 def eval_statements(statements, env):
     ret = None
+    str_res = ""
     for statement in statements:
         if isinstance(statement, ast.Break):
-            raise Break(ret)
+            str_res = str_res + '\nbreak;'
+            continue
         elif isinstance(statement, ast.Continue):
-            raise Continue(ret)
-        ret = eval_statement(statement, env)
-        if isinstance(statement, ast.Return):
-            raise Return(ret)
-    return ret
+            str_res = str_res + '\ncontinue;'
+            continue
+        else:
+            ret = eval_statement(statement, env)
+            str_res =  str_res + "\n" + str(ret) 
+
+
+    return str_res
 
 
 def add_builtins(env):
     builtins = {
-        'print': (['value'], lambda args, e: print(args['value'])),
-        'len': (['iter'], lambda args, e: len(args['iter'])),
-        'slice': (['iter', 'start', 'stop'], lambda args, e: list(args['iter'][args['start']:args['stop']])),
-        'str': (['in'], lambda args, e: str(args['in'])),
-        'int': (['in'], lambda args, e: int(args['in'])),
+        "null":"null", 
+        "true":"true",
+        "false": "false"
     }
-    for key, (params, func) in builtins.items():
-        env.set(key, BuiltinFunction(params, func))
+
+    for key in builtins.keys():
+        env.set(key, 0)
 
 
 def create_global_env():
@@ -305,7 +486,7 @@ def evaluate_env(s, env, verbose=False):
         print_env(env)
         print()
 
-    return ret
+    return buffer + ret
 
 
 def evaluate(s, verbose=False):

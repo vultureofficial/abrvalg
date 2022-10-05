@@ -1,0 +1,15 @@
+using abrgtk 
+
+func activate(app, data) -> void:
+    window = abrgtk::application_window_new(app)
+    abrgtk::window_set_title(window, "Testing")
+    abrgtk::window_set_default_size(window, 200,200)
+    abrgtk::widget_show_all(window)
+    return 
+
+func main() -> i32:
+    app = abrgtk::application_new("com.application.new")
+    abrgtk::signal_connect(app, "activate", activate)
+
+    let status: i32 = abrgtk::application_run(app)
+    abrgtk::object_unref(app)

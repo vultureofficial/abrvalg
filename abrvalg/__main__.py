@@ -5,6 +5,7 @@ Main
 Command line interface.
 """
 import argparse
+import subprocess
 from abrvalg import __version__ as version, interpreter
 
 
@@ -17,13 +18,36 @@ except NameError:
 def parse_args():
     argparser = argparse.ArgumentParser()
     argparser.add_argument('-v', '--verbose', action='store_true')
+    argparser.add_argument('-t', '--transpile', action='store_true')
     argparser.add_argument('file', nargs='?')
+    argparser.add_argument('output', nargs='?')
+
     return argparser.parse_args()
 
 
-def interpret_file(path, verbose=False):
+def interpret_file(path, verbose=False, outPut=None, transpile=False):
     with open(path) as f:
-        print(interpreter.evaluate(f.read(), verbose=verbose))
+        print("Reading : " + path)
+        res = interpreter.evaluate(f.read(), verbose=verbose)
+        
+
+        if transpile:
+            file = ""
+            if outPut != None:
+                file = outPut
+            else:
+                path = path.split('.')[0]
+                file = path + ".cpp"
+
+            print("Writing: " + file)
+            with open(file, "w+") as fw:
+                if res != None:
+                    fw.write(res)
+                fw.close()
+        else:
+            #TODO: compilation 
+            exit(0)
+
 
 
 def repl():
@@ -45,7 +69,7 @@ def repl():
 def main():
     args = parse_args()
     if args.file:
-        interpret_file(args.file, args.verbose)
+        interpret_file(args.file, args.verbose, args.output, args.transpile)
     else:
         repl()
 

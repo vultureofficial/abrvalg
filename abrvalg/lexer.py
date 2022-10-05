@@ -46,7 +46,7 @@ def decode_num(s):
 class Lexer(object):
 
     rules = [
-        ('COMMENT', r'#.*'),
+        ('COMMENT', r'//.*'),
         ('STRING', r'"(\\"|[^"])*"'),
         ('STRING', r"'(\\'|[^'])*'"),
         ('NUMBER', r'\d+\.\d+'),
@@ -54,6 +54,7 @@ class Lexer(object):
         ('NAME', r'[a-zA-Z_]\w*'),
         ('WHITESPACE', '[ \t]+'),
         ('NEWLINE', r'\n+'),
+        ('ARROW', r'->'),
         ('OPERATOR', r'[\+\*\-\/%]'),       # arithmetic operators
         ('OPERATOR', r'<=|>=|==|!=|<|>'),   # comparison operators
         ('OPERATOR', r'\|\||&&'),           # boolean operators
@@ -66,6 +67,7 @@ class Lexer(object):
         ('RBRACK', r'\]'),
         ('LCBRACK', '{'),
         ('RCBRACK', '}'),
+        ('SCOPE', '::'),
         ('COLON', ':'),
         ('COMMA', ','),
     ]
@@ -83,6 +85,9 @@ class Lexer(object):
         'in': 'IN',
         'match': 'MATCH',
         'when': 'WHEN',
+        'let': "LET", 
+        'using': "USING", 
+        'class': "CLASS"
     }
 
     ignore_tokens = [
