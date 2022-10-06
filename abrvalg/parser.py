@@ -332,8 +332,10 @@ class FunctionStatement(Subparser):
         tokens.consume_expected('LPAREN')
         arguments = self._parse_params(tokens)
         tokens.consume_expected('RPAREN')
-        tokens.consume_expected('ARROW')
-        data_type = tokens.consume_expected('NAME')
+        data_type = None 
+        if tokens.current()[0] == 'ARROW':
+            tokens.consume_expected('ARROW')
+            data_type = tokens.consume_expected('NAME')
         tokens.consume_expected('COLON')
         with enter_scope(parser, 'function'):
             block = Block().parse(parser, tokens)

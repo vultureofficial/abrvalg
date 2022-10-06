@@ -4,22 +4,53 @@
 #include <stdio.h>
 #include "data_types.h"
 
+
+/**
+ * @brief Input/ Output class for Falcon Programming language
+ * 
+ * This class the official class for reading and writing to the screen (terminal) and files. 
+ * 
+ * ** Still a work in progress **
+ */
 class io {
     public:
     io() {}
     ~io() {}
     
+    /**
+     * @brief Output method print
+     * 
+     * @tparam Printable 
+     * @param msg 
+     * 
+     * prints </code> msg </code> to the standard output
+     */
     template<typename Printable>
     void print(Printable msg) {
         std::cout << msg ; 
     }
 
+    /**
+     * @brief Output method println
+     * 
+     * @tparam Printable 
+     * @param msg 
+     * 
+     * prints </code> msg </code> and appends a new line
+     */
     template<typename Printable>
     void println(Printable msg) {
         print(msg); 
         print("\n");
     }
 
+    /**
+     * @brief Input method readI32
+     * 
+     * @return i32 
+     * 
+     * reads an i32 integer from the keyboard
+     */
     i32 readI32() {
         using namespace std;
         i32 in;
@@ -28,9 +59,28 @@ class io {
     }
 
 
+    /**
+     * @brief Input method readU32
+     * 
+     * @return u32 
+     */
     u32 readU32() {
         using namespace std;
         u32 in;
+        cin >> in; 
+        return in; 
+    }
+
+    i64 readI64() {
+        using namespace std;
+        i64 in;
+        cin >> in; 
+        return in; 
+    }
+
+    u64 readU64() {
+        using namespace std;
+        u64 in;
         cin >> in; 
         return in; 
     }

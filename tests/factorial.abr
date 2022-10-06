@@ -1,7 +1,21 @@
-func factorial(n):
-    if n == 1:
-        1
-    else:
-        n * factorial(n - 1)
+using io
 
-factorial(10)
+func main() -> i32:
+
+    arr = [["Vincent", "20"], ["Vincent", "20"],["Vincent", "20"]]
+    
+    let outer: i32 = arr::size()
+    first = arr[0]
+    let inner: i32 = first::size()
+
+
+    for i in 0..outer -1:
+        for j in 0..inner -1:
+            str = arr[i][j]
+            io::print(i)
+            io::print(": ")
+            io::print(str)
+            io::print(" : ")
+            io::println(j)
+
+    return 0

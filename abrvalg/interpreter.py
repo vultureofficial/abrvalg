@@ -20,7 +20,7 @@ from abrvalg.ops import add, sub, div, mul, mod,gt,ge,lt,le,eq,ne
 
 
 
-buffer = "#include <data_types.h>\n#include <vector>\n#include <range.h>\n\n"
+buffer = "#include <data_types.h>\n#include <vector>\n#include <range.h>\n"
 
 BuiltinFunction = namedtuple('BuiltinFunction', ['params', 'body'])
 object_list = []
@@ -207,10 +207,23 @@ def eval_for_loop(node, env):
 def eval_function_declaration(node, env):
     env.set(node.name, node)
 
-    func = node.ret[1] 
-    params = node.params
+    if node.ret != None:
+        func = node.ret[1]
+    else:
+        func = "auto"
+    
     if node.name == "main":
-        params = node.params + [ast.TypedParam("argc", "i32"), ast.TypedParam("argv", "i8**")]
+        params = node.params + [ast.TypedParam("argc", "i32"), ast.TypedParam("argv", "char**")]
+        if node.ret != None:
+            func = node.ret[1]
+        else:
+            func = "void"
+    else:
+        if node.ret != None:
+            func = node.ret[1]
+        else:
+            func = "auto"
+        params = node.params
     func = func + " " + node.name + "(" 
     call_env = Environment(env, None)
 
@@ -363,7 +376,7 @@ def eval_array(node, env):
         else:
             ret_str = ret_str + val 
 
-    return ret_str + '};'
+    return ret_str + '}'
 
 
 def eval_dict(node, env):
