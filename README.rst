@@ -1,7 +1,7 @@
 Abrvalg
 =======
 
-Abrvalg is a Python-like programming language interpreter.
+Abrvalg is a Python-like programming language interpreter and transpiler.
 
 The project contains:
 
@@ -9,6 +9,8 @@ The project contains:
 - Top-down recursive descent parser
 - AST-walking interpreter
 - REPL
+- CPP transpiler
+- Static typing (Optional)
 
 Abrvalg doesn't require any third-party libraries.
 
@@ -16,19 +18,18 @@ What the language looks like:
 
 .. code-block::
 
-    func map(arr, fn):
-        r = []
-        for val in arr:
-            r = r + [fn(val)]
-        r
+    using io
 
-    func factorial(n):
-        if n <= 1:
-            1
-        else:
-            n * factorial(n - 1)
+    func main() -> int:
+        let filePtr: file = io::openFile("testing2.txt", "r")
+        //io::writeFile(filePtr, "This is a test!!!!")
 
-    print(map(1...10, factorial))
+        let contents: string = io::readFile(filePtr)
+
+        io::println(contents)
+
+        io::closeFile(filePtr)
+        return 0
 
 
 You can find more examples in ``tests`` directory.
